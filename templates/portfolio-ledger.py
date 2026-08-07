@@ -11,13 +11,17 @@
 """
 
 import sys, json, subprocess, urllib.request
+from datetime import date
+
+STALE_DAYS = 5  # 呆滞判定的最短持有天数（见 references/资金效率与轮动纪律.md §2）
 
 # ====== 持仓（也可用 positions.json 覆盖）======
+# 元组尾部两项为 opened_date(YYYY-MM-DD)、type("长线底仓"/"短线仓")，可留空。
 POSITIONS = [
-    # code,       name,     cost,  shares, stop,  target
-    ("sh600900", "长江电力", 25.90, 400,  26.27, 30.00),
-    ("sh600150", "中国船舶", 34.15, 300,  31.80, 40.00),
-    ("sh600309", "万华化学", 70.81, 400,  66.48, 82.00),
+    # code,       name,     cost,  shares, stop,  target, opened_date,  type
+    ("sh600900", "长江电力", 25.90, 400,  26.27, 30.00, "2026-06-01", "长线底仓"),
+    ("sh600150", "中国船舶", 34.15, 300,  31.80, 40.00, "2026-07-20", "长线底仓"),
+    ("sh600309", "万华化学", 70.81, 400,  66.48, 82.00, "2026-06-15", "长线底仓"),
 ]
 # ============================================
 
@@ -26,8 +30,31 @@ def load_positions():
     if len(sys.argv) > 1:
         with open(sys.argv[1], encoding="utf-8") as f:
             return [(p["code"], p["name"], p["cost"], p["shares"],
-                     p.get("stop", 0), p.get("target", 0)) for p in json.load(f)]
+                     p.get("stop", 0), p.get("target", 0),
+                     p.get("opened_date", ""), p.get("type", ""))
+                    for p in json.load(f)]
     return POSITIONS
+
+
+def _iter8(positions):
+    """把持仓元组补齐到 8 项(兼容旧的 6 项 positions.json)：
+    code,name,cost,shares,stop,target,opened_date,type。"""
+    for p in positions:
+        p = tuple(p)
+        if len(p) < 8:
+            p = p + ("",) * (8 - len(p))
+        yield p[:8]
+
+
+def held_days(opened_date):
+    """持有天数（自然日近似）；无日期返回 None。"""
+    if not opened_date:
+        return None
+    try:
+        y, m, dd = (int(x) for x in opened_date.split("-"))
+        return (date.today() - date(y, m, dd)).days
+    except Exception:
+        return None
 
 
 def realtime(codes):
@@ -75,7 +102,7 @@ def main():
     total_cost = total_mv = 0
     print(f"{'标的':<8}{'现价':>7}{'浮盈%':>8}{'距止损':>8}{'距止盈':>8}{'区间位':>8}  预警")
     print("-" * 66)
-    for code, name, cost, shares, stop, target in positions:
+    for code, name, cost, shares, stop, target, opened, ptype in _iter8(positions):
         bare = code[2:]
         q = rt.get(bare)
         if not q:
@@ -96,6 +123,11 @@ def main():
         if q["prev"] and (price - q["prev"]) / q["prev"] * 100 <= -5: w.append("⚠️大跌")
         if band >= 80:                  w.append("📈高抛区")
         elif 0 <= band < 20:            w.append("📉低吸区")
+        # 🐌 呆滞短线仓：短线仓 + 持有久 + 浮盈卡平 + 卡区间中位（跑输板块/无催化需人工确认）
+        hd = held_days(opened)
+        if (ptype == "短线仓" and hd is not None and hd >= STALE_DAYS
+                and -3 <= pl <= 3 and 30 <= band < 70):
+            w.append(f"🐌呆滞({hd}天,待确认跑输板块→评估换仓)")
         bs = f"{band:.0f}%" if band >= 0 else "n/a"
         print(f"{name:<8}{price:>7.2f}{pl:>+7.1f}%{to_stop:>+7.1f}%{to_tgt:>+7.1f}%{bs:>8}  {' '.join(w)}")
         total_cost += cost * shares
