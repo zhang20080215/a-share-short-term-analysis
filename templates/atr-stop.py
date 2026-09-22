@@ -9,7 +9,7 @@ ATR自适应止损 + 风险反推仓位 计算器
 使用方法：
 1. 修改下方 ACCOUNT / RISK_PCT / ATR_MULT / STOCKS
 2. 运行：python3 atr-stop.py
-   （Hermes环境有python3；本机Claude Code无python，用PowerShell等价核对）
+   （本机解释器：D:/Anaconda/python.exe —— 详见 references/code-pitfalls.md「Python解释器路径」）
 
 数据源：腾讯K线 web.ifzq.gtimg.cn（无需akshare，最稳）。
 K线字段顺序：[日期, 开, 收, 高, 低, 量]  —— 注意是 O/C/H/L，H和L在C后面。

@@ -71,7 +71,7 @@ def realtime(codes):
             continue
         code = f[2]
         out[code] = {"price": float(f[3]), "prev": float(f[4]),
-                     "high": float(f[34]), "low": float(f[35])}
+                     "high": float(f[33]), "low": float(f[34])}
     return out
 
 
